@@ -1,0 +1,18 @@
+[package]
+name = "laziergit"
+version = "1.0.0"
+edition = "2024"
+rust-version = "1.88"
+description = "an even lazier git implementation than lazygit"
+license = "MIT"
+repository = "https://github.com/ViktorRingnes/laziergit"
+homepage = "https://github.com/ViktorRingnes/laziergit"
+readme = "README.md"
+keywords = ["git", "tui", "lazygit", "terminal", "ratatui"]
+categories = ["command-line-utilities", "development-tools"]
+exclude = [".github/"]
+
+[dependencies]
+color-eyre = "0.6.3"
+crossterm = "0.29.0"
+ratatui = "0.30.2"
