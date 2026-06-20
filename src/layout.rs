@@ -29,10 +29,7 @@ pub fn regions(area: Rect) -> Regions {
 }
 
 pub fn contains(area: Rect, column: u16, row: u16) -> bool {
-    column >= area.x
-        && column < area.x + area.width
-        && row >= area.y
-        && row < area.y + area.height
+    column >= area.x && column < area.x + area.width && row >= area.y && row < area.y + area.height
 }
 
 fn inner(area: Rect) -> Rect {

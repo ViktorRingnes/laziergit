@@ -23,9 +23,12 @@ pub fn draw(f: &mut Frame, app: &App) {
 
     match &app.mode {
         Mode::Commit(input) => input_popup(f, "commit message", input, None),
-        Mode::Branch(input) => {
-            input_popup(f, "switch or create branch", input, Some(&app.status.branch.name))
-        }
+        Mode::Branch(input) => input_popup(
+            f,
+            "switch or create branch",
+            input,
+            Some(&app.status.branch.name),
+        ),
         Mode::Confirm => confirm_popup(f),
         Mode::Help => help_popup(f),
         Mode::Normal => {}

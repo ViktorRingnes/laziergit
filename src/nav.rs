@@ -18,7 +18,11 @@ impl App {
         if digit == 0 && self.count.is_none() {
             return;
         }
-        let next = self.count.unwrap_or(0).saturating_mul(10).saturating_add(digit);
+        let next = self
+            .count
+            .unwrap_or(0)
+            .saturating_mul(10)
+            .saturating_add(digit);
         self.count = Some(next.min(99_999));
     }
 

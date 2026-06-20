@@ -2,11 +2,26 @@ use crate::diff::{self, DiffRow};
 use crate::field::{EditOp, Input};
 use crate::git;
 use crate::status::{self, FileEntry, RepoStatus};
+use crate::task::Task;
 use crate::theme::Theme;
 use crate::tree::{self, Row, RowKind, TreeNode};
 use color_eyre::Result;
 use ratatui::layout::Rect;
 use std::collections::HashSet;
+
+pub enum Banner {
+    Busy(String),
+    Ok(String),
+    Error(String),
+}
+
+impl Banner {
+    pub fn text(&self) -> &str {
+        match self {
+            Banner::Busy(s) | Banner::Ok(s) | Banner::Error(s) => s,
+        }
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Focus {
@@ -65,6 +80,8 @@ pub struct App {
     pub awaiting_g: bool,
     pub mode: Mode,
     pub message: String,
+    pub message_error: bool,
+    pub task: Option<Task>,
     pub theme: Theme,
     quit: bool,
 }
@@ -86,6 +103,8 @@ impl App {
             awaiting_g: false,
             mode: Mode::Normal,
             message: String::new(),
+            message_error: false,
+            task: None,
             theme: Theme::detect(),
             quit: false,
         };
@@ -139,18 +158,55 @@ impl App {
             }
             Action::Cancel => self.mode = Mode::Normal,
             Action::Submit => self.submit(),
-            Action::Pull => {
-                self.report("pull", git::pull());
-                self.refresh();
-            }
-            Action::Push => {
-                self.report("push", git::push());
-                self.refresh();
-            }
+            Action::Pull => self.start_task("pull", git::pull),
+            Action::Push => self.start_task("push", git::push),
         }
         if !keeps_pending {
             self.clear_pending();
         }
+    }
+
+    pub fn busy(&self) -> bool {
+        self.task.is_some()
+    }
+
+    pub fn banner(&self) -> Option<Banner> {
+        if let Some(task) = &self.task {
+            Some(Banner::Busy(format!("{} {}…", task.spinner(), task.label)))
+        } else if self.message.is_empty() {
+            None
+        } else if self.message_error {
+            Some(Banner::Error(self.message.clone()))
+        } else {
+            Some(Banner::Ok(self.message.clone()))
+        }
+    }
+
+    pub fn tick(&mut self) {
+        let Some(task) = self.task.as_mut() else {
+            return;
+        };
+        task.tick();
+        let Some(result) = task.poll() else {
+            return;
+        };
+        let label = self.task.take().map(|t| t.label).unwrap_or_default();
+        match result {
+            Ok(text) => self.set_message(format!("{label}: {text}"), false),
+            Err(e) => self.set_message(format!("{label}: {e}"), true),
+        }
+        self.refresh();
+    }
+
+    fn start_task(&mut self, label: &str, job: fn() -> Result<String>) {
+        if self.task.is_none() {
+            self.task = Some(Task::spawn(label, job));
+        }
+    }
+
+    fn set_message(&mut self, text: String, error: bool) {
+        self.message = text;
+        self.message_error = error;
     }
 
     fn toggle_focus(&mut self) {
@@ -261,7 +317,7 @@ impl App {
             }
         };
         if let Err(e) = result {
-            self.message = e.to_string();
+            self.set_message(e.to_string(), true);
         }
         self.refresh();
     }
@@ -286,7 +342,7 @@ impl App {
                 self.reload_diff();
                 self.ensure_visible();
             }
-            Err(e) => self.message = e.to_string(),
+            Err(e) => self.set_message(e.to_string(), true),
         }
     }
 
@@ -323,18 +379,11 @@ impl App {
         out
     }
 
-    fn report(&mut self, label: &str, result: Result<String>) {
-        self.message = match result {
-            Ok(text) => format!("{label}: {text}"),
-            Err(e) => format!("{label}: {e}"),
-        };
-    }
-
     fn report_unit(&mut self, label: &str, result: Result<()>) {
-        self.message = match result {
-            Ok(()) => format!("{label}: ok"),
-            Err(e) => format!("{label}: {e}"),
-        };
+        match result {
+            Ok(()) => self.set_message(format!("{label}: ok"), false),
+            Err(e) => self.set_message(format!("{label}: {e}"), true),
+        }
     }
 }
 

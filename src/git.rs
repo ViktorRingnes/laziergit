@@ -1,8 +1,14 @@
 use color_eyre::eyre::{Result, bail};
-use std::process::Command;
+use std::process::{Command, Stdio};
+
+fn git(args: &[&str]) -> Command {
+    let mut cmd = Command::new("git");
+    cmd.args(args).stdin(Stdio::null());
+    cmd
+}
 
 fn run(args: &[&str]) -> Result<Vec<u8>> {
-    let out = Command::new("git").args(args).output()?;
+    let out = git(args).output()?;
     if !out.status.success() {
         bail!("{}", String::from_utf8_lossy(&out.stderr).trim());
     }
@@ -10,8 +16,7 @@ fn run(args: &[&str]) -> Result<Vec<u8>> {
 }
 
 fn capture(args: &[&str]) -> String {
-    Command::new("git")
-        .args(args)
+    git(args)
         .output()
         .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
         .unwrap_or_default()
@@ -70,7 +75,7 @@ pub fn push() -> Result<String> {
 }
 
 fn remote(args: &[&str]) -> Result<String> {
-    let out = Command::new("git").args(args).output()?;
+    let out = git(args).output()?;
     let mut text = String::from_utf8_lossy(&out.stdout).into_owned();
     text.push_str(&String::from_utf8_lossy(&out.stderr));
     let last = text

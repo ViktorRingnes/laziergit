@@ -1,8 +1,8 @@
-use crate::app::App;
+use crate::app::{App, Banner};
 use crate::theme;
 use ratatui::{
     Frame,
-    layout::Rect,
+    layout::{Alignment, Constraint, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::Paragraph,
@@ -20,6 +20,15 @@ const CHIPS: &[(&str, &str)] = &[
 ];
 
 pub fn header(f: &mut Frame, area: Rect, app: &App) {
+    let bg = Style::new().bg(theme::HEADER_BG);
+    let banner = app.banner();
+    let banner_width = banner
+        .as_ref()
+        .map(|b| (b.text().chars().count() as u16 + 1).min(area.width / 2))
+        .unwrap_or(0);
+    let [left, right] =
+        Layout::horizontal([Constraint::Min(0), Constraint::Length(banner_width)]).areas(area);
+
     let branch = &app.status.branch;
     let mut spans = vec![Span::styled(
         format!(" {} ", branch.name),
@@ -34,10 +43,24 @@ pub fn header(f: &mut Frame, area: Rect, app: &App) {
             Style::new().fg(theme::MUTED),
         ));
     }
-    f.render_widget(
-        Paragraph::new(Line::from(spans)).style(Style::new().bg(theme::HEADER_BG)),
-        area,
-    );
+    f.render_widget(Paragraph::new(Line::from(spans)).style(bg), left);
+
+    if let Some(banner) = banner {
+        let color = match banner {
+            Banner::Busy(_) => theme::ACCENT,
+            Banner::Ok(_) => theme::GREEN,
+            Banner::Error(_) => theme::RED,
+        };
+        f.render_widget(
+            Paragraph::new(Line::styled(
+                banner.text().to_string(),
+                Style::new().fg(color),
+            ))
+            .alignment(Alignment::Right)
+            .style(bg),
+            right,
+        );
+    }
 }
 
 pub fn footer(f: &mut Frame, area: Rect, app: &App) {
@@ -47,17 +70,6 @@ pub fn footer(f: &mut Frame, area: Rect, app: &App) {
             Paragraph::new(Line::styled(
                 format!(" {pending}"),
                 Style::new().fg(theme::ACCENT).add_modifier(Modifier::BOLD),
-            ))
-            .style(bg),
-            area,
-        );
-        return;
-    }
-    if !app.message.is_empty() {
-        f.render_widget(
-            Paragraph::new(Line::styled(
-                format!(" {}", app.message),
-                Style::new().fg(theme::TEXT),
             ))
             .style(bg),
             area,
