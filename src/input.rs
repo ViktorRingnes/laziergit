@@ -20,6 +20,9 @@ fn normal(focus: Focus, code: KeyCode) -> Action {
             Char('k') | Up => Action::NavPrev,
             Char('h') | Left => Action::Collapse,
             Char('l') | Right => Action::Expand,
+            Char('g') => Action::PressG,
+            Char('G') => Action::GoBottom,
+            Char(c) if c.is_ascii_digit() => digit(c),
             Enter => Action::EnterRow,
             Tab => Action::ToggleFocus,
             Char(' ') => Action::StageToggle,
@@ -35,10 +38,20 @@ fn normal(focus: Focus, code: KeyCode) -> Action {
             Char('q') => Action::Quit,
             Char('j') | Down => Action::ScrollDiff(1),
             Char('k') | Up => Action::ScrollDiff(-1),
+            Char('g') => Action::PressG,
+            Char('G') => Action::GoBottom,
+            Char(c) if c.is_ascii_digit() => digit(c),
             Char('?') => Action::OpenHelp,
             Enter | Tab => Action::ToggleFocus,
             _ => Action::Noop,
         },
+    }
+}
+
+fn digit(c: char) -> Action {
+    match c.to_digit(10) {
+        Some(d) => Action::PushDigit(d),
+        None => Action::Noop,
     }
 }
 

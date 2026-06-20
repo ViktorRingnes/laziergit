@@ -5,6 +5,7 @@ use crate::status::{self, FileEntry, RepoStatus};
 use crate::theme::Theme;
 use crate::tree::{self, Row, RowKind, TreeNode};
 use color_eyre::Result;
+use ratatui::layout::Rect;
 use std::collections::HashSet;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -30,7 +31,13 @@ pub enum Action {
     Expand,
     EnterRow,
     ToggleFocus,
+    FocusSidebar,
+    FocusDiff,
+    SelectRow(usize),
     ScrollDiff(i32),
+    PushDigit(u32),
+    PressG,
+    GoBottom,
     StageToggle,
     OpenCommit,
     OpenBranch,
@@ -49,9 +56,13 @@ pub struct App {
     pub rows: Vec<Row>,
     pub collapsed: HashSet<usize>,
     pub selected: usize,
+    pub sidebar_offset: usize,
     pub focus: Focus,
     pub diff_rows: Vec<DiffRow>,
     pub diff_scroll: u16,
+    pub area: Rect,
+    pub count: Option<u32>,
+    pub awaiting_g: bool,
     pub mode: Mode,
     pub message: String,
     pub theme: Theme,
@@ -66,9 +77,13 @@ impl App {
             rows: Vec::new(),
             collapsed: HashSet::new(),
             selected: 0,
+            sidebar_offset: 0,
             focus: Focus::Sidebar,
             diff_rows: Vec::new(),
             diff_scroll: 0,
+            area: Rect::ZERO,
+            count: None,
+            awaiting_g: false,
             mode: Mode::Normal,
             message: String::new(),
             theme: Theme::detect(),
@@ -83,18 +98,35 @@ impl App {
     }
 
     pub fn perform(&mut self, action: Action) {
+        let keeps_pending = matches!(action, Action::PushDigit(_) | Action::PressG);
         match action {
             Action::Noop => {}
             Action::Quit => self.quit = true,
-            Action::NavNext => self.move_selection(1),
-            Action::NavPrev => self.move_selection(-1),
+            Action::NavNext => {
+                let n = self.take_count();
+                self.move_selection(n);
+            }
+            Action::NavPrev => {
+                let n = self.take_count();
+                self.move_selection(-n);
+            }
             Action::Collapse => self.collapse(),
             Action::Expand => self.expand(),
             Action::EnterRow => self.enter_row(),
             Action::ToggleFocus => self.toggle_focus(),
-            Action::ScrollDiff(delta) => {
-                self.diff_scroll = (self.diff_scroll as i32 + delta).max(0) as u16
+            Action::FocusSidebar => self.focus = Focus::Sidebar,
+            Action::FocusDiff => self.focus = Focus::Diff,
+            Action::SelectRow(index) => {
+                self.focus = Focus::Sidebar;
+                self.set_selected(index);
             }
+            Action::ScrollDiff(delta) => {
+                let n = self.take_count();
+                self.scroll_diff(delta * n);
+            }
+            Action::PushDigit(digit) => self.push_digit(digit),
+            Action::PressG => self.press_g(),
+            Action::GoBottom => self.go_bottom(),
             Action::StageToggle => self.stage_toggle(),
             Action::OpenCommit => self.mode = Mode::Commit(Input::default()),
             Action::OpenBranch => self.mode = Mode::Branch(Input::default()),
@@ -116,15 +148,9 @@ impl App {
                 self.refresh();
             }
         }
-    }
-
-    fn move_selection(&mut self, delta: i32) {
-        if self.rows.is_empty() {
-            return;
+        if !keeps_pending {
+            self.clear_pending();
         }
-        let last = self.rows.len() as i32 - 1;
-        self.selected = (self.selected as i32 + delta).clamp(0, last) as usize;
-        self.reload_diff();
     }
 
     fn toggle_focus(&mut self) {
@@ -153,8 +179,7 @@ impl App {
                 .rev()
                 .find(|&i| self.rows[i].depth < row.depth)
         {
-            self.selected = parent;
-            self.reload_diff();
+            self.set_selected(parent);
         }
     }
 
@@ -171,8 +196,7 @@ impl App {
                 .get(self.selected + 1)
                 .is_some_and(|c| c.depth > row.depth)
             {
-                self.selected += 1;
-                self.reload_diff();
+                self.set_selected(self.selected + 1);
             }
         } else {
             self.set_collapsed(row.id, false);
@@ -195,6 +219,7 @@ impl App {
             .and_then(|id| self.rows.iter().position(|r| r.id == id))
             .unwrap_or_else(|| self.selected.min(self.rows.len().saturating_sub(1)));
         self.reload_diff();
+        self.ensure_visible();
     }
 
     fn input_mut(&mut self) -> Option<&mut Input> {
@@ -259,12 +284,13 @@ impl App {
                     self.selected = self.rows.len().saturating_sub(1);
                 }
                 self.reload_diff();
+                self.ensure_visible();
             }
             Err(e) => self.message = e.to_string(),
         }
     }
 
-    fn reload_diff(&mut self) {
+    pub(crate) fn reload_diff(&mut self) {
         self.diff_scroll = 0;
         self.diff_rows = match self
             .rows

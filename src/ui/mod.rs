@@ -14,23 +14,18 @@ use ratatui::{
 };
 
 pub fn draw(f: &mut Frame, app: &App) {
-    let [header, body, footer] = Layout::vertical([
-        Constraint::Length(1),
-        Constraint::Min(0),
-        Constraint::Length(1),
-    ])
-    .areas(f.area());
-    let [sidebar, diffpane] =
-        Layout::horizontal([Constraint::Percentage(20), Constraint::Percentage(80)]).areas(body);
+    let r = crate::layout::regions(f.area());
 
-    chrome::header(f, header, app);
-    sidebar::render(f, sidebar, app);
-    diff::render(f, diffpane, app);
-    chrome::footer(f, footer, app);
+    chrome::header(f, r.header, app);
+    sidebar::render(f, r.sidebar, app);
+    diff::render(f, r.diff, app);
+    chrome::footer(f, r.footer, app);
 
     match &app.mode {
-        Mode::Commit(input) => input_popup(f, "commit message", input),
-        Mode::Branch(input) => input_popup(f, "switch or create branch", input),
+        Mode::Commit(input) => input_popup(f, "commit message", input, None),
+        Mode::Branch(input) => {
+            input_popup(f, "switch or create branch", input, Some(&app.status.branch.name))
+        }
         Mode::Confirm => confirm_popup(f),
         Mode::Help => help_popup(f),
         Mode::Normal => {}
@@ -125,8 +120,9 @@ pub(super) fn panel(title: &str, active: bool) -> Block<'static> {
         .style(Style::new().bg(theme::BASE))
 }
 
-fn input_popup(f: &mut Frame, title: &str, input: &Input) {
-    let area = popup(f.area(), 60, 3);
+fn input_popup(f: &mut Frame, title: &str, input: &Input, hint: Option<&str>) {
+    let height = if hint.is_some() { 4 } else { 3 };
+    let area = popup(f.area(), 60, height);
     let block = Block::bordered()
         .border_type(BorderType::Rounded)
         .border_style(Style::new().fg(theme::ACCENT))
@@ -138,11 +134,25 @@ fn input_popup(f: &mut Frame, title: &str, input: &Input) {
     let inner = block.inner(area);
     f.render_widget(Clear, area);
     f.render_widget(block, area);
+
+    let field = Rect { height: 1, ..inner };
     f.render_widget(
         Paragraph::new(input.value.as_str()).style(Style::new().fg(theme::TEXT)),
-        inner,
+        field,
     );
-    f.set_cursor_position((inner.x + input.cursor_col(), inner.y));
+    f.set_cursor_position((field.x + input.cursor_col(), field.y));
+
+    if let Some(branch) = hint {
+        let below = Rect {
+            y: inner.y + 1,
+            height: inner.height.saturating_sub(1),
+            ..inner
+        };
+        f.render_widget(
+            Paragraph::new(format!("on {branch}")).style(Style::new().fg(theme::MUTED)),
+            below,
+        );
+    }
 }
 
 fn confirm_popup(f: &mut Frame) {

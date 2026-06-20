@@ -42,6 +42,17 @@ pub fn header(f: &mut Frame, area: Rect, app: &App) {
 
 pub fn footer(f: &mut Frame, area: Rect, app: &App) {
     let bg = Style::new().bg(theme::HEADER_BG);
+    if let Some(pending) = app.pending_label() {
+        f.render_widget(
+            Paragraph::new(Line::styled(
+                format!(" {pending}"),
+                Style::new().fg(theme::ACCENT).add_modifier(Modifier::BOLD),
+            ))
+            .style(bg),
+            area,
+        );
+        return;
+    }
     if !app.message.is_empty() {
         f.render_widget(
             Paragraph::new(Line::styled(

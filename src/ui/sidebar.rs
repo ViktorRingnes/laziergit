@@ -18,7 +18,9 @@ pub fn render(f: &mut Frame, area: Rect, app: &App) {
         .highlight_symbol("▎ ")
         .highlight_spacing(HighlightSpacing::Always);
     let selected = (!app.rows.is_empty()).then_some(app.selected);
-    let mut state = ListState::default().with_selected(selected);
+    let mut state = ListState::default()
+        .with_offset(app.sidebar_offset)
+        .with_selected(selected);
     f.render_stateful_widget(list, area, &mut state);
 }
 

@@ -2,6 +2,8 @@
 
 an even lazier git implementation than lazygit
 
+![preview](assets/preview.png)
+
 ## install
 
 ```
